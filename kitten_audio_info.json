@@ -1,0 +1,9 @@
+{
+  "filename": "kitten.mp3",
+  "sampling_frequency": 44100,
+  "duration_seconds": 18.63,
+  "num_samples": 821583,
+  "min_amplitude": -0.04076610878109932,
+  "max_amplitude": 0.03917469084262848,
+  "mean_amplitude": 1.0309202480129898e-05
+}
