@@ -928,256 +928,117 @@
 # if __name__ == "__main__":
 #     main()
 
-import cv2
+
 import os
+import cv2
 import numpy as np
 
-# Директория с изображениями
-IMAGE_DIR = 'image'
-# Максимальный размер окна для отображения изображений
-MAX_WINDOW_SIZE = (1200, 800)
+IMAGE_DIR = "image"
 
-# Загрузка каскада Хаара для детекции лиц
-face_cascade = cv2.CascadeClassifier(
-    cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-)
+#  каскады
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+plate_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_russian_plate_number.xml")
 
-# Загрузка каскада Хаара для детекции автомобилей (используем его для поиска рамки машины)
-# Убедитесь, что файл 'haarcascade_car.xml' находится в правильной директории или укажите полный путь
-# Если у вас нет этого файла, его можно скачать или использовать другой метод детекции объектов.
-# Для примера, я предполагаю, что у вас есть такой файл.
-# Если нет, эту часть можно будет заменить или удалить.
-car_cascade_path = cv2.data.haarcascades + 'haarcascade_car.xml'
-if os.path.exists(car_cascade_path):
-    car_cascade = cv2.CascadeClassifier(car_cascade_path)
-else:
-    print(f"Предупреждение: Файл {car_cascade_path} не найден. Детекция автомобилей будет пропущена.")
-    car_cascade = None
+car_cascade_path = cv2.data.haarcascades + "haarcascade_car.xml"
+car_cascade = cv2.CascadeClassifier(car_cascade_path) if os.path.exists(car_cascade_path) else None
 
 
-def safe_read_image(path):
-    """
-    Безопасно читает изображение из файла.
-    Возвращает None, если файл не существует или не может быть прочитан.
-    """
+def read_image(path):
+    # чиает картинку
     if not os.path.exists(path):
-        print(f"Ошибка: Файл не найден по пути: {path}")
         return None
-
-    img = cv2.imread(path)
-
-    if img is None:
-        print(f"Предупреждение: Не удалось прочитать изображение стандартным способом: {path}. Попытка через imdecode.")
-        try:
-            with open(path, 'rb') as f:
-                file_bytes = np.frombuffer(f.read(), np.uint8)
-                img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-        except Exception as e:
-            print(f"Ошибка при чтении файла {path} через imdecode: {e}")
-            return None
-    return img
+    data = np.fromfile(path, dtype=np.uint8)
+    return cv2.imdecode(data, cv2.IMREAD_COLOR)
 
 
-def resize_to_fit(img, max_size=MAX_WINDOW_SIZE):
-    """
-    Изменяет размер изображения, чтобы оно соответствовало максимальным размерам,
-    сохраняя при этом соотношение сторон.
-    """
-    h, w = img.shape[:2]
-    max_w, max_h = max_size
+def show_image(name, image):
+    # показывает картинку в окне
+    if image is None:
+        return
+    h, w = image.shape[:2]
 
-    if w <= max_w and h <= max_h:
-        return img
-
-    scale = min(max_w / w, max_h / h)
-    new_w = int(w * scale)
-    new_h = int(h * scale)
-
-    return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    scale = min(1200 / w, 800 / h, 1.0)
+    if scale < 1.0:
+        image = cv2.resize(image, (int(w * scale), int(h * scale)))
+    cv2.imshow(name, image)
 
 
-def detect_faces(img):
-    """
-    Обнаруживает лица на изображении.
-    """
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(
-        gray, scaleFactor=1.1, minNeighbors=7, minSize=(50, 50)
-    )
-    faces = [f for f in faces if f[2] > 40 and f[3] > 40]
-    return faces
+def find_faces(image):
+     # лица
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    return face_cascade.detectMultiScale(gray, 1.1, 6, minSize=(40, 40))
 
 
-def detect_cars_in_roi(img, roi):
-    """
-    Обнаруживает автомобили внутри указанной области (ROI).
-    Использует каскад Хаара для автомобилей.
-    """
+def find_cars(image):
+    # машина
     if car_cascade is None:
         return []
-
-    x, y, w, h = roi
-    # Извлекаем область интереса
-    car_roi_img = img[y:y+h, x:x+w]
-    gray_roi = cv2.cvtColor(car_roi_img, cv2.COLOR_BGR2GRAY)
-
-    # Детектируем автомобили внутри этой области
-    cars = car_cascade.detectMultiScale(
-        gray_roi,
-        scaleFactor=1.05, # Может потребоваться подстройка
-        minNeighbors=5,
-        minSize=(30, 30) # Минимальный размер автомобиля
-    )
-
-    # Корректируем координаты обнаруженных автомобилей, чтобы они соответствовали оригинальному изображению
-    adjusted_cars = []
-    for (cx, cy, cw, ch) in cars:
-        # Убедимся, что автомобиль не слишком маленький и не выходит за пределы ROI
-        if cw > 50 and ch > 50: # Дополнительная фильтрация
-            adjusted_cars.append((x + cx, y + cy, cw, ch))
-    return adjusted_cars
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.equalizeHist(gray)
+    return car_cascade.detectMultiScale(gray, 1.1, 4, minSize=(60, 60))
 
 
-def detect_license_plate(img, car_roi):
-    """
-    Находит номерной знак внутри заданной области (ROI автомобиля).
-    """
-    x, y, w, h = car_roi
-    # Извлекаем область автомобиля
-    car_img_part = img[y:y+h, x:x+w]
+def find_plates(image, box=None):
+    # номера
+    if box:
+        x, y, w, h = box
+        roi = image[y:y + h, x:x + w]
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        plates = plate_cascade.detectMultiScale(gray, 1.1, 4, minSize=(20, 20))
 
-    gray = cv2.cvtColor(car_img_part, cv2.COLOR_BGR2GRAY)
-    h_roi, w_roi = gray.shape
-
-    # Шаг 1: Поиск белых областей
-    _, white_mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
-
-    # Шаг 2: Морфологические операции
-    kernel = np.ones((5, 5), np.uint8)
-    white_mask = cv2.morphologyEx(white_mask, cv2.MORPH_OPEN, kernel, iterations=2)
-    white_mask = cv2.morphologyEx(white_mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-
-    # Шаг 3: Поиск контуров
-    contours, _ = cv2.findContours(white_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    best_plate = None
-    best_score = 0
-
-    for cnt in contours:
-        x_cnt, y_cnt, w_cnt, h_cnt = cv2.boundingRect(cnt)
-
-        if w_cnt < 60 or h_cnt < 20: # Уменьшил минимальный размер для поиска внутри ROI
-            continue
-
-        ratio = w_cnt / h_cnt
-        if ratio < 3.0 or ratio > 6.0:
-            continue
-
-        area = w_cnt * h_cnt
-        if area < 1500 or area > 15000: # Уменьшил диапазон площади
-            continue
-
-        roi_plate = gray[y_cnt:y_cnt + h_cnt, x_cnt:x_cnt + w_cnt]
-        dark_pixels = np.sum(roi_plate < 100)
-        total_pixels = roi_plate.size
-        dark_ratio = dark_pixels / total_pixels
-
-        if 0.10 <= dark_ratio <= 0.40:
-            score = area * dark_ratio
-            if 4.0 <= ratio <= 5.0:
-                score *= 1.5
-
-            if score > best_score:
-                best_score = score
-                # Сохраняем координаты относительно ROI автомобиля
-                best_plate = (x_cnt, y_cnt, w_cnt, h_cnt)
-
-    if best_plate:
-        # Возвращаем координаты относительно оригинального изображения
-        plate_x, plate_y, plate_w, plate_h = best_plate
-        return [(x + plate_x, y + plate_y, plate_w, plate_h)]
-    return []
+        return [(x + px, y + py, pw, ph) for px, py, pw, ph in plates]
+    else:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        return plate_cascade.detectMultiScale(gray, 1.1, 4, minSize=(30, 30))
 
 
-def draw_detections(img, faces, cars, plates):
-    """
-    Рисует прямоугольники вокруг обнаруженных объектов.
-    """
-    result = img.copy()
+def draw_boxes(image, faces, cars, plates):
 
-    # Рисуем лица
-    for (x, y, w, h) in faces:
-        cv2.rectangle(result, (x, y), (x + w, y + h), (0, 255, 0), 3)
-        cv2.putText(result, 'FACE', (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-
-    # Рисуем рамки автомобилей
-    for (x, y, w, h) in cars:
-        cv2.rectangle(result, (x, y), (x + w, y + h), (255, 0, 0), 3)
-        cv2.putText(result, 'CAR', (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
-
-    # Рисуем номерные знаки
-    for (x, y, w, h) in plates:
-        cv2.rectangle(result, (x, y), (x + w, y + h), (0, 255, 255), 4)
-        cv2.putText(result, f'PLATE', (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-
+    result = image.copy()
+    for x, y, w, h in faces:
+        cv2.rectangle(result, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        cv2.putText(result, "FACE", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+    for x, y, w, h in cars:
+        cv2.rectangle(result, (x, y), (x + w, y + h), (255, 0, 0), 2)
+        cv2.putText(result, "CAR", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+    for x, y, w, h in plates:
+        cv2.rectangle(result, (x, y), (x + w, y + h), (0, 255, 255), 3)
+        cv2.putText(result, "CAR2", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
     return result
 
 
-def show_image(window_name, img):
-    """
-    Отображает изображение в окне, масштабируя его при необходимости.
-    """
-    img_resized = resize_to_fit(img)
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-    h, w = img_resized.shape[:2]
-    cv2.resizeWindow(window_name, w, h)
-    cv2.imshow(window_name, img_resized)
+# ===== ГЛАВНАЯ ЧАСТЬ =====
 
+print("Запуск системы распознавания")
 
-# ===== ОБРАБОТКА =====
-print("Начинаю обработку...\n")
+# Люди
+people = read_image(os.path.join(IMAGE_DIR, "people.jpg"))
+if people is not None:
+    faces = find_faces(people)
+    print(f"Люди: найдено лиц - {len(faces)}")
+    show_image("PEOPLE", draw_boxes(people, faces, [], []))
+else:
+    print("Люди: файл не найден")
 
-# Обработка изображения с людьми (для демонстрации детекции лиц)
-people_path = os.path.join(IMAGE_DIR, 'people.jpg')
-people_img = safe_read_image(people_path)
+# Машины и номера
+car = read_image(os.path.join(IMAGE_DIR, "car.jpg"))
+if car is not None:
+    cars = find_cars(car)
+    print(f"Машины: найдено - {len(cars)}")
 
-if people_img is not None:
-    faces = detect_faces(people_img)
-    # Для людей не ищем машины и номера, только лица
-    result_people = draw_detections(people_img, faces, [], [])
-    show_image('PEOPLE', result_people)
-    print(f"Найдено лиц: {len(faces)}")
+    plates = []
+    if cars:
+        for box in cars:
+            plates.extend(find_plates(car, box))
+        print(f"Номера: найдено - {len(plates)}")
+    else:
+        plates = find_plates(car)
+        print(f"Номера: найдено - {len(plates)}")
 
-# Обработка изображения с автомобилем
-car_path = os.path.join(IMAGE_DIR, 'car.jpg')
-car_img = safe_read_image(car_path)
+    show_image("CAR", draw_boxes(car, [], cars, plates))
+else:
+    print("Машины: файл не найден")
 
-if car_img is not None:
-    # Сначала детектируем автомобили на всем изображении
-    cars = []
-    if car_cascade is not None:
-        cars = car_cascade.detectMultiScale(
-            cv2.cvtColor(car_img, cv2.COLOR_BGR2GRAY),
-            scaleFactor=1.05,
-            minNeighbors=5,
-            minSize=(50, 50) # Увеличен минимальный размер для общей детекции
-        )
-        cars = [(x, y, w, h) for (x, y, w, h) in cars if w > 100 and h > 100] # Фильтруем слишком мелкие обнаружения
-
-    all_plates = []
-    # Для каждого найденного автомобиля ищем номерной знак внутри его рамки
-    for car_roi in cars:
-        plates = detect_license_plate(car_img, car_roi)
-        all_plates.extend(plates)
-
-    print(f"Найдено автомобилей (для поиска номеров): {len(cars)}")
-    print(f"Найдено номерных знаков: {len(all_plates)}")
-
-    # Рисуем обнаружения: лица (если были), автомобили и номерные знаки
-    # Для изображения с машиной, лица не ищем, поэтому передаем пустой список
-    result_car = draw_detections(car_img, [], cars, all_plates)
-    show_image('CAR', result_car)
-
-print("\nОбработка завершена. Закройте окна для выхода.")
+print("Распознавание завершено")
 cv2.waitKey(0)
 cv2.destroyAllWindows()
